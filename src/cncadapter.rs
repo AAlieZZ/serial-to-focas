@@ -5,6 +5,9 @@ use crate::cncadapter::fwlib32::cnc_dwnend4;
 const LOG_PATH: &str = "/var/log/foces32.log";
 const EW_OK: std::os::raw::c_short = fwlib32::EW_OK as std::os::raw::c_short;
 const EW_BUFFER: std::os::raw::c_short = fwlib32::EW_BUFFER as std::os::raw::c_short;
+const EW_NOOPT: std::os::raw::c_short = fwlib32::EW_NOOPT as std::os::raw::c_short;
+const EW_LENGTH: std::os::raw::c_short = fwlib32::EW_LENGTH as std::os::raw::c_short;
+const EW_NUMBER: std::os::raw::c_short = fwlib32::EW_NUMBER as std::os::raw::c_short;
 
 pub struct CncAdapter<'a> {
     m_flib_hndl: std::os::raw::c_ushort,
@@ -77,7 +80,7 @@ impl CncAdapter<'_> {
             match unsafe {fwlib32::cnc_download4(self.m_flib_hndl, &mut n as *mut std::os::raw::c_long, prg)} {
                 EW_BUFFER => continue,
                 EW_OK => {
-                    prg = unsafe {prg.add(n as usize)};
+                    prg = unsafe {prg.add(n.try_into().unwrap())};
                     len -= n;
                 },
                 _ => break,
@@ -105,7 +108,7 @@ impl CncAdapter<'_> {
                 fwlib32::cnc_getdtailerr(self.m_flib_hndl, &mut ncn_err as *mut fwlib32::ODBERR);
             }
             if ncn_err.err_no == 4 {
-                return Err(format!("CncAdapter::download_file(): cnc_dwnend4 error. err_no={}, err_dtno={}\nCncAdapter::downloadfile(): cnc_dwnend4 error.The same NC program has already been registered!",ncn_err.err_no, ncn_err.err_dtno).into());
+                return Err(format!("CncAdapter::download_file(): cnc_dwnend4 error. err_no={}, err_dtno={}\nCncAdapter::download_file(): cnc_dwnend4 error.The same NC program has already been registered!",ncn_err.err_no, ncn_err.err_dtno).into());
             }
             else {
                 return  Err(format!("CncAdapter::downloadFil(): cnc_dwnend4 error. err_no={}, err_dtno={}",ncn_err.err_no, ncn_err.err_dtno).into());
@@ -116,19 +119,21 @@ impl CncAdapter<'_> {
     }
 
     pub fn read_macro(&self, mut s_no: std::os::raw::c_ulong, mut len: std::os::raw::c_ulong) -> Result<Vec<f64>, Box<dyn std::error::Error>> {
-        let mut buf: Vec<f64> = vec![0.0; 4096];
+        let mut buf: Vec<f64> = vec![0.0; len.try_into().unwrap()];
         let mut n: std::os::raw::c_ulong = len;
-        let num: usize = len as usize;
         let mut prg = buf.as_mut_ptr();
         while len > 0 {
             println!("CncAdapter::read_macro(): cnc_rdmacror2 ...... left size = {}", len);
             match unsafe {fwlib32::cnc_rdmacror2(self.m_flib_hndl, s_no, &mut n as *mut std::os::raw::c_ulong, prg)} {
                 EW_BUFFER => continue,
                 EW_OK => {
-                    prg = unsafe {prg.add(n as usize)};
+                    prg = unsafe {prg.add(n.try_into().unwrap())};
                     len -= n;
                     s_no += n;
                 },
+                EW_NOOPT => return Err("CncAdapter::download_file(): cnc_rdmacror2 error.\nCncAdapter::read_macro(): No custom macro option".into()),
+                EW_LENGTH => return Err("Data block length error\nThe number of custom macro variables(*num) is 0 or less.".into()),
+                EW_NUMBER => return Err("Data number error\nCustom macro variable number(s_no) is wrong.".into()),
                 _ => break,
             }
             n = len;
@@ -145,6 +150,6 @@ impl CncAdapter<'_> {
         }
         println!("CncAdapter::read_macro(): reads the custom macro variables success.");
         std::thread::sleep(std::time::Duration::from_secs(1));
-        Ok(buf[..num].to_vec())
+        Ok(buf)
     }
 }

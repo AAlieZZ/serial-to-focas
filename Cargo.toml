@@ -7,3 +7,6 @@ edition = "2021"
 
 [dependencies]
 serialport = {version = "4.2.2", default-features = false}
+
+[package.metadata.cross.target.i686-unknown-linux-gnu]
+zig = "2.27"
